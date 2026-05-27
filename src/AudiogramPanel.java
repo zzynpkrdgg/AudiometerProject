@@ -6,7 +6,7 @@ import java.util.List;
 
 public class AudiogramPanel extends JPanel {
 
-    // Verileri tutacak olan yardımcı sınıf
+
     public static class PointData {
         String frequency;
         int db;
@@ -26,11 +26,11 @@ public class AudiogramPanel extends JPanel {
         repaint(); // Paneli yenile
     }
 
-    // Frekansın hangi sütuna denk geldiğini bulan garanti metod
+
     private int getFreqIndex(String freq) {
     if (freq == null) return 0;
     
-    // Metnin içindeki rakam dışındaki her şeyi (Hz, boşluk vs.) siler
+
     String clean = freq.replaceAll("[^0-9]", "").trim();
     
     System.out.println("DEBUG: getFreqIndex temizlenmiş veri: " + clean);
@@ -42,7 +42,7 @@ public class AudiogramPanel extends JPanel {
         case "2000": return 3;
         case "4000": return 4;
         case "8000": return 5;
-        default:     return 0; // Tanıyamazsa en başa çizer
+        default:     return 0;
     }
 }
 
@@ -52,7 +52,7 @@ protected void paintComponent(Graphics g) {
     Graphics2D g2 = (Graphics2D) g;
     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-    // HER ÇİZİMDE O ANKİ GÜNCEL BOYUTU AL
+
     double w = (double) getWidth();
     double h = (double) getHeight();
     double pad = 70.0;
@@ -60,13 +60,34 @@ protected void paintComponent(Graphics g) {
     double usableW = w - (2.0 * pad);
     double usableH = h - (2.0 * pad);
 
-    // 1. IZGARA ÇİZİMİ
+
+    g2.setColor(Color.BLACK);
+    g2.setFont(new Font("Arial", Font.BOLD, 12));
+
+
+    String xLabel = "Frequency (Hz)";
+    int xLabelWidth = g2.getFontMetrics().stringWidth(xLabel);
+    g2.drawString(xLabel, (int)(pad + (usableW / 2.0) - (xLabelWidth / 2.0)), (int)(h - pad + 55));
+
+    java.awt.geom.AffineTransform oldTransform = g2.getTransform();
+    g2.translate(pad - 50, (int)(pad + (usableH / 2.0)));
+    g2.rotate(-Math.PI / 2); // 90 derece sola döndür
+    String yLabel = "Intensity (dB)";
+    int yLabelWidth = g2.getFontMetrics().stringWidth(yLabel);
+    g2.drawString(yLabel, -yLabelWidth / 2, 0);
+    g2.setTransform(oldTransform);
+
+
     g2.setColor(Color.LIGHT_GRAY);
-    for (int i = 0; i <= 12; i++) {
-        int y = (int) (pad + (i * usableH / 12.0));
+    int totalSteps = (80 - 30) / 5;
+    
+    for (int i = 0; i <= totalSteps; i++) {
+        int y = (int) ((h - pad) - (i * usableH / (double)totalSteps));
         g2.drawLine((int)pad, y, (int)(w - pad), y);
+        
         g2.setColor(Color.BLACK);
-        g2.drawString((i * 10) + "", (int)pad - 35, y + 5);
+        int currentLabelDb = 30 + (i * 5); 
+        g2.drawString(currentLabelDb + "", (int)pad - 30, y + 5);
         g2.setColor(Color.LIGHT_GRAY);
     }
 
@@ -79,16 +100,14 @@ protected void paintComponent(Graphics g) {
         g2.setColor(Color.LIGHT_GRAY);
     }
 
-    // 2. NOKTALARI ÇİZ (Burası Değişti!)
     g2.setStroke(new BasicStroke(3)); 
     for (PointData p : points) {
-        // Frekans indeksini (0-5 arası) alıyoruz
         int fIdx = getFreqIndex(p.frequency); 
         
-        // DİKKAT: Burada 'x' ve 'y' değişkenlerini LOCAL (yerel) olarak 
-        // o anki usableW ve usableH'ye göre tekrar hesaplıyoruz!
         int targetX = (int) (pad + (fIdx * usableW / 5.0));
-        int targetY = (int) (pad + (p.db * usableH / 120.0));
+        
+
+        int targetY = (int) ((h - pad) - ((p.db - 30) * usableH / 50.0));
 
         if (p.isRight) {
             g2.setColor(Color.RED);

@@ -5,10 +5,7 @@ import com.fazecast.jSerialComm.SerialPort;
 public class SerialManager {
 
     private SerialPort port;
-    //private Consumer<String> messageListener; // GUI'ye haber vermek için
 
-    // GUI'den dinleyiciyi atamak için metod
-    // SerialManager sınıfının EN ALTINA, son parantezden ÖNCE ekle:
     public interface SerialMessageListener {
         void onMessageReceived(String message);
     }
@@ -41,11 +38,11 @@ public class SerialManager {
         }
     }
 
-    // SerialManager içindeki startListening metodunu bul ve bu blokla değiştir
+
 public void startListening() {
     new Thread(() -> {
         try {
-            // Scanner yerine direkt InputStream kullanalım ki takılmasın
+
             java.io.InputStream in = port.getInputStream();
             byte[] buffer = new byte[1024];
             while (true) {
@@ -53,14 +50,14 @@ public void startListening() {
                     int len = in.read(buffer);
                     String message = new String(buffer, 0, len).trim();
                     
-                    // Terminale basalım ki duyup duymadığını görelim
+                    
                     System.out.println("Porttan Gelen Ham Veri: [" + message + "]");
                     
                     if (message.toUpperCase().contains("RESPONSE")) {
                         if (listener != null) listener.onMessageReceived("RESPONSE");
                     }
                 }
-                Thread.sleep(100); // İşlemciyi yormasın
+                Thread.sleep(100);
             }
         } catch (Exception e) {
             System.out.println("Okuma hatası: " + e.getMessage());

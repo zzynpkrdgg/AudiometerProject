@@ -18,14 +18,13 @@ public class GUI {
     SerialManager serialManager;
 
     public GUI() {
-        // 1. ÖNCE ARAYÜZÜ ÇİZ (Hata olsa bile programı görelim)
+
         createWindow();
         createComponents();
         addComponents();
         addEvents();
         frame.setVisible(true);
 
-        // 2. SONRA BAĞLANTIYI YAP
         try {
             logArea.append("Sistem başlatılıyor...\n");
             
@@ -35,7 +34,7 @@ public class GUI {
             serialManager.startListening();
             
             logArea.append("Bağlantı başarılı! Teste başlayabilirsiniz.\n");
-        } catch (Throwable e) { // Her türlü hatayı yakala
+        } catch (Throwable e) {
             logArea.append("HATA: COM3 portuna bağlanırken bir sorun oluştu!\n");
             logArea.append("Detay: " + e.getMessage() + "\n");
         }
@@ -62,8 +61,10 @@ public class GUI {
         String[] frequencies = {"250 Hz", "500 Hz", "1000 Hz", "2000 Hz", "4000 Hz", "8000 Hz"};
         frequencyBox = new JComboBox<>(frequencies);
 
-        intensitySlider = new JSlider(0, 120, 40);
-        intensitySlider.setMajorTickSpacing(10);
+
+        intensitySlider = new JSlider(30, 80, 30);
+        intensitySlider.setMajorTickSpacing(5);
+        intensitySlider.setSnapToTicks(true);
         intensitySlider.setPaintTicks(true);
         intensitySlider.setPaintLabels(true);
 
@@ -97,99 +98,106 @@ public class GUI {
     }
 
     private void addEvents() {
-startButton.addActionListener(e -> {
-    // Varsa eski zamanlayıcıyı durdur
-    if (heartbeatTimer != null && heartbeatTimer.isRunning()) {
-        heartbeatTimer.stop();
-    }
 
-    // HER 1 SANİYEDE BİR ÇALIŞACAK DÖNGÜ
-    heartbeatTimer = new javax.swing.Timer(1000, event -> {
-        if (serialManager != null) {
-            // 1. Mevcut dB değerini Slider'dan al
-            int currentDb = intensitySlider.getValue();
-            
-            // 2. Eğer dB 0'dan büyükse 1 azalt ve Slider'ı güncelle
-            if (currentDb > 0) {
-                int newDb = currentDb - 1;
-                intensitySlider.setValue(newDb); // Slider otomatik kayar
-                
-                // 3. Güncel bilgileri al ve donanıma gönder
-                String f = (String) frequencyBox.getSelectedItem();
-                String ear = rightEarButton.isSelected() ? "RIGHT" : "LEFT";
-                String command = "FREQ:" + f + ";DB:" + newDb + ";EAR:" + ear;
-                
-                serialManager.sendCommand(command);
-            } else {
-                // dB 0'a ulaştıysa durdur
-                heartbeatTimer.stop();
-                logArea.append(">> Test Bitti: Minimum şiddete ulaşıldı.\n");
-            }
+    startButton.addActionListener(e -> {
+        if (heartbeatTimer != null && heartbeatTimer.isRunning()) {
+            heartbeatTimer.stop();
         }
+
+
+        if (serialManager != null) {
+            String currentFreq = (String) frequencyBox.getSelectedItem();
+            String cleanFreq = currentFreq.replaceAll("[^0-9]", "").trim(); 
+            
+            int initialDb = intensitySlider.getValue();
+            int dbKademe = ((initialDb - 30) / 5) + 1;
+            
+            String command = cleanFreq + " " + dbKademe;
+            
+            serialManager.sendCommand(command);
+            logArea.append(">> Test Başlatıldı. Başlangıç Şiddeti: " + initialDb + " dB (Kademe: " + dbKademe + ")\n");
+        }
+
+        heartbeatTimer = new javax.swing.Timer(2000, event -> {
+            if (serialManager != null) {
+                int currentDb = intensitySlider.getValue();
+                
+                if (currentDb < 80) {
+                    int newDb = currentDb + 5;
+                    intensitySlider.setValue(newDb);
+                    
+                    String currentFreq = (String) frequencyBox.getSelectedItem();
+                    String cleanFreq = currentFreq.replaceAll("[^0-9]", "").trim();
+                    
+                    int dbKademe = ((newDb - 30) / 5) + 1;
+                    String command = cleanFreq + " " + dbKademe;
+                    
+                    serialManager.sendCommand(command);
+                    logArea.append("Otomatik Artış: " + newDb + " dB (Kademe: " + dbKademe + ") gönderildi.\n");
+                } else {
+                    heartbeatTimer.stop();
+                    logArea.append(">> Test Bitti: Maksimum şiddete (80 dB) ulaşıldı.\n");
+                }
+            }
+        });
+
+        heartbeatTimer.start();
     });
 
-    heartbeatTimer.start();
-    logArea.append(">> Otomatik Test Başlatıldı (Saniyede -1 dB).\n");
-});
     stopButton.addActionListener(e -> {
-    if (heartbeatTimer != null) heartbeatTimer.stop();
-    logArea.append("Test ve Sinyal Durduruldu.\n");
-});
+        if (heartbeatTimer != null && heartbeatTimer.isRunning()) {
+            heartbeatTimer.stop();
+        }
+        logArea.append(">> Test kullanıcı tarafından durduruldu.\n");
+    });
 }
 
-// private void sendCurrentStatus() {
-//     if (serialManager != null) {
-//         String f = (String) frequencyBox.getSelectedItem();
-//         int d = intensitySlider.getValue();
-//         String e = rightEarButton.isSelected() ? "RIGHT" : "LEFT";
-        
-//         String cmd = "FREQ:" + f + ";DB:" + d + ";EAR:" + e;
-//         serialManager.sendCommand(cmd);
-//         // Debug için terminale yazdırabilirsin:
-//         // System.out.println("Heartbeat gönderildi: " + cmd);
-//     }
-// }
-    private void handleSerialMessage(String message) {
+   private void handleSerialMessage(String message) {
     SwingUtilities.invokeLater(() -> {
         if (message.contains("RESPONSE")) {
-            // 1. HEMEN ZAMANLAYICIYI DURDUR (Veri akışı ve dB düşüşü kesilsin)
+            // 1. Zamanlayıcıyı hemen durdur
             if (heartbeatTimer != null && heartbeatTimer.isRunning()) {
                 heartbeatTimer.stop();
                 logArea.append(">> RESPONSE ALINDI: Test durduruldu.\n");
             }
 
-            // 2. Mevcut değerleri al
             String currentFreq = (String) frequencyBox.getSelectedItem();
             int currentDb = intensitySlider.getValue();
             boolean isRight = rightEarButton.isSelected();
             String earStr = isRight ? "RIGHT" : "LEFT";
 
-            // 3. Grafiğe noktayı bas
+
             graphPanel.addPoint(currentFreq, currentDb, isRight);
             
-            // 4. Python'a gönder (Analiz için)
-            String pythonCevabi = PythonConnector.sendToPython(currentFreq, currentDb, earStr);
+            String cleanFreqForPython = currentFreq.replaceAll("[^0-9]", "").trim();
+
+            String pythonCevabi = PythonConnector.sendToPython(cleanFreqForPython, currentDb, earStr.toLowerCase());
             logArea.append(">> Algoritma Analizi: " + pythonCevabi + "\n");
 
             try {
-                // dB GÜNCELLEME (Eğer Python yeni_db gönderdiyse)
-                if (pythonCevabi.contains("yeni_db")) {
-                    int yeniDb = extractInt(pythonCevabi, "yeni_db");
+                if (pythonCevabi.contains("next_db")) {
+                    int yeniDb = extractInt(pythonCevabi, "next_db");
+                    
+                    if (yeniDb < 30) yeniDb = 30;
+                    if (yeniDb > 80) yeniDb = 80;
+                    
                     intensitySlider.setValue(yeniDb);
                     
-                    // FREKANS GÜNCELLEME (Eğer Python yeni_frekans gönderdiyse)
-                    if (pythonCevabi.contains("yeni_frekans")) {
-                        int yeniFreq = extractInt(pythonCevabi, "yeni_frekans");
+                    if (pythonCevabi.contains("frequency")) {
+                        int yeniFreq = extractInt(pythonCevabi, "frequency");
                         frequencyBox.setSelectedItem(yeniFreq + " Hz");
                     }
 
-                    // 3. Yeni değerleri al ve donanıma (Arduino) "Yeni sesi çal" emrini gönder
+          
                     String guncelFreq = (String) frequencyBox.getSelectedItem();
+                    String cleanGuncelFreq = guncelFreq.replaceAll("[^0-9]", "").trim();
                     int guncelDb = intensitySlider.getValue();
-                    String guncelKomut = "FREQ:" + guncelFreq + ";DB:" + guncelDb + ";EAR:" + earStr;
+                    
+                    int dbKademe = ((guncelDb - 30) / 5) + 1; 
+                    String guncelKomut = cleanGuncelFreq + " " + dbKademe; 
                     
                     serialManager.sendCommand(guncelKomut);
-                    logArea.append(">> OTOMATİK AYAR: " + guncelFreq + " ve " + guncelDb + " dB gönderildi.\n");
+                    logArea.append(">> OTOMATİK ALGORİTMA AYARI: " + guncelFreq + " ve Kademe " + dbKademe + " set edildi.\n");
                 }
             } catch (Exception e) {
                 System.out.println("JSON Ayrıştırma Hatası: " + e.getMessage());
@@ -198,9 +206,9 @@ startButton.addActionListener(e -> {
     });
 }
 
-// BU YARDIMCI METODU GUI CLASS'ININ EN ALTINA EKLE (Hata almamak için)
+
 private int extractInt(String json, String key) {
-    // JSON içinden belirttiğimiz anahtarın (key) yanındaki sayıyı çekip alır
+
     String[] parts = json.split("\"" + key + "\":");
     String val = parts[1].split("[,}]")[0].replaceAll("[^0-9]", "").trim();
     return Integer.parseInt(val);

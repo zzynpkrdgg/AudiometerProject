@@ -75,15 +75,33 @@ def handle_client(conn, addr):
                         current_db=START_DB
                     )
                 
-                current_state = frequency_states[state_key]
-                new_state, result = handle_response_message(current_state, heard)
-                frequency_states[state_key] = new_state
+                #current_state = frequency_states[state_key]
+                #new_state, result = handle_response_message(current_state, heard)
+                #frequency_states[state_key] = new_state
                 
+                # 1. Genel hafıza nesnesini (AudiogramState) doğru şekilde çekiyoruz
+                ear_clean = ear.strip().lower().replace("ı", "i")
+                current_audiogram = audiograms.get(ear_clean, audiograms["right"])
+                
+                # 2. Saniyede 5 dB artarken atlanan ara adımları "Duymadı (False)" olarak işletiyoruz
+                current_freq_state = current_audiogram.get_state(frequency)
+                if current_freq_state is not None:
+                    previous_db = current_freq_state.current_db
+                    if db > previous_db:
+                        from HughsonWestlake import process_response
+                        current_freq_state = process_response(current_freq_state, False)
+                        current_audiogram = current_audiogram.update_state(current_freq_state)
+                
+                # 3. Fonksiyona doğru nesneyi (AudiogramState) paslayıp hafızayı güncelliyoruz
+                new_audiogram, result = handle_response_message(current_audiogram, True)
+                audiograms[ear_clean] = new_audiogram
+                
+
                 # Sonucu JSON olarak hazırla ve Java'ya gönder
                 response = {
                     "status": "ok",
-                    "frequency": result["frequency"],
-                    "next_db": result["next_db"],
+                    "frequency": result.get("frequency"),
+                    "next_db": result.get("next_db"),
                     "is_complete": result["is_complete"],
                     "threshold": result["threshold"],
                     "classification": result["classification"]
