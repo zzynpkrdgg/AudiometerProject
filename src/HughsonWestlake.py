@@ -118,19 +118,21 @@ def determine_threshold(responses: tuple[Response, ...], frequency: int) -> Opti
 
     Yani: bir "duymadı" sonrası gelen "duydu" → eşik.
     """
-    heard_levels = get_heard_levels(responses, frequency)
-    unheard_levels = get_unheard_levels(responses, frequency)
-
-    # Henüz hem duyulan hem duyulmayan yoksa eşik belirlenemez
-    if not heard_levels or not unheard_levels:
+    # Bu frekansa ait tüm yanıtları al
+    freq_responses = list(filter(lambda r: r.frequency == frequency, responses))
+    
+    # Eşik belirlemek için minimum 2 yanıt gerekli
+    if len(freq_responses) < 2:
         return None
-
-    last = responses[-1]
-
-    # Son yanıt "duydu" ise ve daha önce duyulmayan bir seviye varsa → eşik
-    if last.heard and last.frequency == frequency:
+    
+    # Son iki yanıtı kontrol et
+    prev = freq_responses[-2]
+    last = freq_responses[-1]
+    
+    # BME kuralı: "duymadı" sonrası "duydu" → eşik bulundu
+    if not prev.heard and last.heard:
         return last.level_db
-
+    
     return None
 
 
@@ -171,24 +173,73 @@ def process_response(state: FrequencyTestState, heard: bool) -> FrequencyTestSta
 # COM EKİBİNE BAĞLANTI NOKTASI
 # ─────────────────────────────────────────────
 
-def handle_response_message(state: FrequencyTestState, heard: bool) -> tuple[FrequencyTestState, dict]:
+def handle_response_message(audiogram: AudiogramState, heard: bool) -> tuple[AudiogramState, dict]:
     """
     COM ekibinin socket sunucusu bu fonksiyonu çağırır.
     heard → Java'dan gelen RESPONSE mesajı var mı? (True/False)
 
-    Döndürür:
-      - güncellenmiş state (bir sonraki yanıtta kullanılacak)
-      - Java'ya gönderilecek JSON dict
-    """
-    new_state = process_response(state, heard)
+    Mevcut frekansı belirler, yanıtı işler, ve frekans tamamlandığında
+    otomatik olarak sıradaki frekansa geçer.
 
-    result = {
-        "frequency": state.frequency,
-        "next_db": new_state.current_db,
-        "is_complete": new_state.is_complete,
-        "threshold": new_state.threshold,
-        "classification": classify_hearing(new_state.threshold) if new_state.threshold else None
-    }
-    return new_state, result
+    Döndürür:
+      - güncellenmiş AudiogramState (tüm frekansların durumu)
+      - Java'ya gönderilecek JSON dict (mevcut veya sıradaki frekans bilgileri)
+
+    SAF FONKSİYON — orijinal AudiogramState değişmez, yeni bir kopya döner.
+    """
+    # TEST_ORDER sırasına göre tamamlanmamış ilk frekansı bul
+    current_frequency = audiogram.next_frequency()
+    if current_frequency is None:
+        # Tüm frekanslar tamamlandı
+        return audiogram, {"error": "All frequencies completed"}
+    
+    # Mevcut frekansın test durumunu al
+    current_state = audiogram.get_state(current_frequency)
+    
+    # Yanıtı işle (eşik belirleme veya sonraki dB seviyesi hesaplama)
+    new_state = process_response(current_state, heard)
+    
+    # AudiogramState'i güncellenmiş state ile update et
+    updated_audiogram = audiogram.update_state(new_state)
+    
+    # Eğer bu frekans için eşik belirlendiyse sıradaki frekansa geç
+    if new_state.is_complete:
+        next_freq = updated_audiogram.next_frequency()
+        
+        if next_freq is not None:
+            # Sıradaki frekans var, onun state'ini hazırla
+            next_state = updated_audiogram.get_state(next_freq)
+            result = {
+                "frequency": next_freq,
+                "next_db": next_state.current_db,
+                "is_complete": False,
+                "threshold": None,
+                "classification": None,
+                "previous_frequency": current_frequency,
+                "previous_threshold": new_state.threshold,
+                "previous_classification": classify_hearing(new_state.threshold)
+            }
+        else:
+            # Tüm frekanslar tamamlandı
+            result = {
+                "frequency": None,
+                "next_db": None,
+                "is_complete": True,
+                "threshold": None,
+                "classification": None,
+                "all_completed": True,
+                "thresholds": updated_audiogram.get_thresholds()
+            }
+    else:
+        # Bu frekans henüz tamamlanmadı, aynı frekansla devam et
+        result = {
+            "frequency": current_frequency,
+            "next_db": new_state.current_db,
+            "is_complete": False,
+            "threshold": None,
+            "classification": None
+        }
+    
+    return updated_audiogram, result
 
 
