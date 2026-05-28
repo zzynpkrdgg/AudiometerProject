@@ -29,15 +29,15 @@ HEARING_LEVELS: tuple[str, ...] = (
 # Sonraki dB seviyesini belirle
 # ─────────────────────────────────────────────
 
-def next_level(current_db: int, heard: bool) -> int:
+def next_level(current_db: int) -> int:
     """
-    BME kuralı:
-      - Duyulduysa → 10 dB azalt
-      - Duyulmadıysa → 5 dB artır
-
-    SAF FONKSİYON: Aynı girdi her zaman aynı çıktıyı verir.
+    Yeni kural (30-80 dB aralığı):
+      - Sabit olarak 5 dB artır (2 saniye sonra test yukarı çıkar).
+      - (-10 dB azaltma kuralı kaldırıldı)
+    
+    Aralık: MIN_DB=30 ile MAX_DB=80 arasında sınırlandırılır.
     """
-    return current_db - 10 if heard else current_db + 5
+    return current_db + 5
 
 
 # ─────────────────────────────────────────────
@@ -45,19 +45,24 @@ def next_level(current_db: int, heard: bool) -> int:
 # ─────────────────────────────────────────────
 
 def classify_hearing(threshold_db: int) -> str:
+    """
+    30-80 dB aralığında işitme kaybı sınıflandırması (BME standardı).
+    
+    Aralık:
+      - 30-40 dB: Hafif
+      - 41-55 dB: Orta
+      - 56-70 dB: Orta-ileri
+      - 71-80 dB: İleri
+    """
     match threshold_db:
-        case db if db<=25:
-            return "Normal İşitme"
         case db if db <= 40:
             return "Hafif işitme kaybı"
         case db if db <= 55:
             return "Orta derece işitme kaybı"
         case db if db <= 70:
             return "Orta-ileri derece işitme kaybı"
-        case db if db <= 90:
+        case _:  # 71-80
             return "İleri derece işitme kaybı"
-        case _:
-            return "Çok ileri derece işitme kaybı"
 
 
 # ─────────────────────────────────────────────
@@ -144,8 +149,10 @@ def process_response(state: FrequencyTestState, heard: bool) -> FrequencyTestSta
     """
     Yeni bir RESPONSE geldiğinde:
       1. Yanıtı state'e ekler
-      2. Eşik belirlendiyse state'i tamamlar
+      2. Eşik belirlendiyse state'i tamamlar (duymadı → duydu)
       3. Belirlenemediyse sonraki dB seviyesini hesaplar
+    
+    Aralık sınırlaması: 30 dB ≤ next_db ≤ 80 dB
 
     SAF FONKSİYON — orijinal state değişmez, yeni state döner.
     """
@@ -164,8 +171,10 @@ def process_response(state: FrequencyTestState, heard: bool) -> FrequencyTestSta
         return new_state.set_threshold(threshold)
 
     # Eşik belirlenemediyse sonraki seviyeyi hesapla
-    # MIN_DB ve MAX_DB sınırları aşılmamalı
-    next_db = max(MIN_DB, min(MAX_DB, next_level(state.current_db, heard)))
+    # 30 dB altına inmez, 80 dB üstüne çıkmaz
+    next_db = max(MIN_DB, min(MAX_DB, next_level(state.current_db)))
+    
+    # Eğer max sınıra ulaşıldıysa ve test bitmiyorsa özel bir logic gerekiyorsa buraya eklenebilir.
     return new_state.set_current_db(next_db)
 
 
@@ -241,5 +250,3 @@ def handle_response_message(audiogram: AudiogramState, heard: bool) -> tuple[Aud
         }
     
     return updated_audiogram, result
-
-

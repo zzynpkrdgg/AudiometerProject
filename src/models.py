@@ -16,11 +16,9 @@ from enum import Enum
 TEST_FREQUENCIES: tuple[int, ...] = (250, 500, 1000, 2000, 4000, 8000)
 
 # test sırası
-# 1000 Hz günlük konuşmayı algılama için önemli olduğundan önce test edilir
 TEST_ORDER: tuple[int, ...] = (8000, 4000, 2000, 1000, 500, 250)
 
-# BME dokümanına göre başlangıç dB seviyesi
-# 26-40 aralığı hafif işitme kaybı olduğundan 40 dB'den başlanır
+# başlangıç dB seviyesi
 START_DB: int = 30
 
 # dB aralığı
