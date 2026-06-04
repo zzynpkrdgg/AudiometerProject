@@ -23,7 +23,7 @@ public class AudiogramPanel extends JPanel {
 
     public void addPoint(String freq, int db, boolean isRight) {
         points.add(new PointData(freq, db, isRight));
-        repaint(); // Paneli yenile
+        repaint();
     }
 
 
